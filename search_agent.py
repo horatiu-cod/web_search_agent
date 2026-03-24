@@ -147,9 +147,9 @@ def ai_search():
             context_found = True
     return context
 
-def contains_data_needed(search_query, query):
+def contains_data_needed(search_content, query):
     sys_msg = sys_msgs.contains_data_msg
-    needed_prompt = f'PAGE_TEXT: "{search_query}"\nUSER_PROMPT: "{assistant_convo[-1]}"\nSEARCH_QUERY: "{query}"'
+    needed_prompt = f'PAGE_TEXT: "{search_content}"\nUSER_PROMPT: "{assistant_convo[-1]}"\nSEARCH_QUERY: "{query}"'
     response = ollama.chat(
         model="llama3.1:8b",
         messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": needed_prompt}]
