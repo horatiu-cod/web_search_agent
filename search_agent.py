@@ -1,4 +1,4 @@
-import ollama
+from ollama import Client 
 import sys_msgs
 import requests
 import trafilatura
@@ -7,7 +7,20 @@ from duckduckgo_search import DDGS
 
 assistant_convo = [sys_msgs.assistant_msg]  # Initialize conversation with the system message
 
-def search_or_not(model_name: str ) -> bool:
+def get_ollama_client(host_url: str='http://localhost:11434', api_key: str=""):
+    authorization = 'Authorization'
+    value = 'Bearer ' + api_key
+    if host_url=='http://localhost:11434':
+        authorization = 'x-some-header'
+        value = 'some-value'
+
+    client = Client(
+        host= host_url,
+        headers={f'{authorization}': f'{value}'} 
+    )
+    return client
+
+def search_or_not(model_name: str , host: str, key: str) -> bool:
     """This function determines whether a search is needed based on the user's prompt and the assistant's conversation history.
 
     Args:
@@ -18,7 +31,9 @@ def search_or_not(model_name: str ) -> bool:
     """
     sys_msg = sys_msgs.search_or_not_msg
 
-    response = ollama.chat(
+    client = get_ollama_client(host_url=host, api_key=key)
+
+    response = client.chat(
         model=model_name,
         messages=[{"role": "system", "content": sys_msg}, assistant_convo[-1]]
     )
@@ -30,7 +45,7 @@ def search_or_not(model_name: str ) -> bool:
     else:
         return False
 
-def query_generator(model_name: str ) -> str:
+def query_generator(model_name: str, host: str, key: str) -> str:
     """This function generates a search query based on the user's prompt and the assistant's conversation history.
     Args:
         model_name (str): The name of the language model to be used for generating the search query.
@@ -40,7 +55,9 @@ def query_generator(model_name: str ) -> str:
     sys_msg = sys_msgs.query_msg
     query_msg = f'CREATE A SEARCH QUERY FOR THIS PROPMT: \n{assistant_convo[-1]}'
 
-    response = ollama.chat(
+    client = get_ollama_client(host_url=host, api_key=key)
+
+    response = client.chat(
         model=model_name, 
         messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": query_msg}]
     )
@@ -119,7 +136,7 @@ def duckduckgo_api_search(query: str) -> list[dict]:
         return formatted_results
 
 
-def best_search_result(s_results, search_query: str, model_name: str) -> int:
+def best_search_result(s_results, search_query: str, model_name: str, host: str, key: str ) -> int:
     """This function takes in the search results, the original search query, and the model name to determine which search result is the best match for the user's query.
     Args:
         s_results (list): A list of dictionaries containing the search results, where each dictionary has the following keys:
@@ -133,10 +150,12 @@ def best_search_result(s_results, search_query: str, model_name: str) -> int:
     """
     sys_msg = sys_msgs.best_search_msg
     search_results_str = f'SEARCH_RESULTS: {s_results}\nUSER_PROMPT: "{assistant_convo[-1]["content"]}"\nSEARCH_QUERY: "{search_query}"'
-    
+
+    client = get_ollama_client(host_url=host, api_key=key)
+
     for _ in range(3):  # Try up to 3 times to get a valid response
         try:
-            response = ollama.chat(
+            response = client.chat(
                 model=model_name, 
                 messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": search_results_str}]
             )
@@ -160,7 +179,7 @@ def scrape_webpage(url):
         print(f"FAILED TO SCRAPE WEBPAGE: {url} because of error: {e}")
         return None
 
-def ai_search(model_name: str) -> str | None:
+def ai_search(model_name: str, host: str, key: str) -> str | None:
     """This function implements the AI search logic by generating a search query, performing a search, selecting the best search result, scraping the webpage content, and determining if the scraped content contains the data needed to answer the user's query.
     Args:
         model_name (str): The name of the language model to be used for generating the search query.
@@ -170,7 +189,7 @@ def ai_search(model_name: str) -> str | None:
     context = None   
     # Here implementing the actual search logic using the generated query and return the results
     print('GENERATING SEARCH QUERY')
-    search_query = query_generator(model_name=model_name)
+    search_query = query_generator(model_name=model_name, host=host, key=key)
 
     if search_query[0] == '"':
         search_query = search_query[1:-1]  # Remove quotes if they exist    
@@ -182,7 +201,7 @@ def ai_search(model_name: str) -> str | None:
 
     while not context_found and len(search_results) > 0:
         print('SELECTING BEST SEARCH RESULT')
-        best_result = best_search_result(s_results=search_results, search_query=search_query, model_name=model_name)
+        best_result = best_search_result(s_results=search_results, search_query=search_query, model_name=model_name, host=host, key=key)
         try:
             page_link = search_results[best_result]['link']
         except Exception as e:
@@ -192,12 +211,12 @@ def ai_search(model_name: str) -> str | None:
         page_text = scrape_webpage(page_link)
         search_results.pop(best_result)  # Remove the best result from the list to avoid selecting it again if we need to loop
         
-        if page_text and contains_data_needed(search_content=page_text, query=search_query):
+        if page_text and contains_data_needed(search_content=page_text, query=search_query, host=host, key=key):
             context = page_text
             context_found = True
     return context
 
-def contains_data_needed(search_content : str, query : str) -> bool:
+def contains_data_needed(search_content : str, query : str, host: str, key: str) -> bool:
     """This function takes in the scraped webpage content and the original search query to determine if the content contains the data needed to answer the user's query.
     Args:
         search_content (str): The scraped webpage content.
@@ -207,7 +226,9 @@ def contains_data_needed(search_content : str, query : str) -> bool:
     """
     sys_msg = sys_msgs.contains_data_msg
     needed_prompt = f'PAGE_TEXT: "{search_content}"\nUSER_PROMPT: "{assistant_convo[-1]}"\nSEARCH_QUERY: "{query}"'
-    response = ollama.chat(
+    client = get_ollama_client(host_url=host, api_key=key)
+
+    response = client.chat(
         model="llama3.1:8b",
         messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": needed_prompt}]
     )
@@ -219,7 +240,7 @@ def contains_data_needed(search_content : str, query : str) -> bool:
     else:
         return False
 
-def stream_assistant_response(model: str):
+def stream_assistant_response(model: str, host: str, key: str):
     """This function streams the assistant's response in real-time as it is generated by the language model.
     Args:        
         model (str): The name of the language model to be used for generating the assistant's response.
@@ -227,7 +248,9 @@ def stream_assistant_response(model: str):
         None
     """
     global assistant_convo
-    response_stream = ollama.chat(model=model, messages=assistant_convo, stream=True)
+    client = get_ollama_client(host_url=host, api_key=key)
+
+    response_stream = client.chat(model=model, messages=assistant_convo, stream=True)
     complete_response = ""
     print("ASSISTANT:")
 
@@ -238,9 +261,8 @@ def stream_assistant_response(model: str):
     assistant_convo.append({"role": "assistant", "content": complete_response})
     print('\n\n')  # for a new line after the assistant's response
 
-def run_web_search(model_name: str ):
+def run_web_search(model_name: str, host: str, key: str ):
     global assistant_convo
-    # model_name = "llama3.1:8b"   specify your model here
 
     while True:
         prompt = input("USER: \n")
@@ -250,8 +272,8 @@ def run_web_search(model_name: str ):
         
         assistant_convo.append({"role": "user", "content": prompt})
 
-        if search_or_not(model_name=model_name):
-            context = ai_search(model_name=model_name)
+        if search_or_not(model_name=model_name, host=host, key=key):
+            context = ai_search(model_name=model_name,  host=host, key=key)
             assistant_convo = assistant_convo[:-1]  # Remove the last user message to replace it with one that includes context
 
             if context:
@@ -266,5 +288,5 @@ def run_web_search(model_name: str ):
                     'of how the user would like to proceed'
                 )
             assistant_convo.append({"role": "user", "content": prompt})
-        stream_assistant_response(model_name)
+        stream_assistant_response(model_name,  host=host, key=key)
 
