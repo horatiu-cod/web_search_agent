@@ -7,7 +7,7 @@ from duckduckgo_search import DDGS
 
 assistant_convo = [sys_msgs.assistant_msg]  # Initialize conversation with the system message
 
-def get_ollama_client(host_url: str='http://localhost:11434', api_key: str=""):
+def get_ollama_client(host_url: str, api_key: str):
     authorization = 'Authorization'
     value = 'Bearer ' + api_key
     if host_url=='http://localhost:11434':
@@ -123,7 +123,7 @@ def duckduckgo_api_search(query: str) -> list[dict]:
         results = ddgs.text(
             keywords=query,
             region='wt-wt',
-            safesearch='Off',
+            safesearch='moderate',
             timelimit='10d', 
             max_results=10)
         formatted_results = []
@@ -261,7 +261,7 @@ def stream_assistant_response(model: str, host: str, key: str):
     assistant_convo.append({"role": "assistant", "content": complete_response})
     print('\n\n')  # for a new line after the assistant's response
 
-def run_web_search(model_name: str, host: str, key: str ):
+def run_web_search(model_name: str, host: str='http://localhost:11434', key: str="" ):
     global assistant_convo
 
     while True:
